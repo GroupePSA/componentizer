@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 )
 
 type (
@@ -32,6 +31,9 @@ type (
 		//IsAvailable checks if a component is locally available
 		IsAvailable(cr ComponentRef) bool
 
+		// ComponentOrder returns a slice of component identifiers in the parsing order
+		ComponentOrder() []string
+
 		//Use returns a component matching the given reference.
 		//If the component corresponding to the reference contains a template
 		//definition then the component will be duplicated and templated before
@@ -44,6 +46,7 @@ type (
 		l         *log.Logger
 		directory string
 		fComps    map[string]fetchedComponent
+		order     []string
 	}
 
 	fetchedComponent struct {
@@ -55,87 +58,110 @@ type (
 
 //createComponentManager creates a new component manager
 func CreateComponentManager(l *log.Logger, workDir string) ComponentManager {
-	return componentManager{
+	return &componentManager{
 		l:         l,
 		directory: workDir,
 		fComps:    map[string]fetchedComponent{},
+		order:     []string{},
 	}
 }
 
-func (cm componentManager) Init(main Component, tplC TemplateContext) (Model, error) {
-	var fM Model
-
-	// Fetch component
-	fComp, err := cm.fetchComponent(main)
+func (cm *componentManager) Init(main Component, tplC TemplateContext) (Model, error) {
+	// Compute a temporary model with only the parents to find components
+	tempModel, comps, err := cm.findComponents(main, tplC)
 	if err != nil {
-		cm.l.Printf("error fetching the main descriptor %s", err.Error())
 		return nil, err
 	}
 
-	// Parse all its references
-	var refs []ComponentRef
-	var parent Component
-	var hasDescriptor bool
-	descPath := filepath.Join(fComp.rootPath, main.Descriptor())
-	if _, err := os.Stat(descPath); err == nil {
-		hasDescriptor = true
-		cm.l.Printf("Parsing references in descriptor of component %s\n", main.ComponentId())
-		refs, parent, err = main.ParseRefs(descPath, tplC)
-		if err != nil {
-			return nil, err
+	// Go through found components to build the final model in order
+	var fModel Model
+	for _, comp := range comps {
+		// Check if the component is referenced from the model
+		if tempModel.IsReferenced(comp) {
+			// Refresh component by resolving it again (takes into account overrides after first discovery)
+			comp, err := comp.Component(tempModel)
+			if err != nil {
+				return nil, err
+			}
+
+			// Fetch the component if necessary
+			fComp, err := cm.fetchComponent(comp)
+			if err != nil {
+				return nil, err
+			}
+
+			// Parse the component model to merge it into the final model
+			cModel, err := comp.ParseModel(fComp.rootPath, tplC)
+			if err != nil {
+				return nil, err
+			}
+			if cModel != nil {
+				if fModel != nil {
+					fModel, err = fModel.Merge(cModel)
+					if err != nil {
+						return nil, err
+					}
+				} else {
+					fModel = cModel
+				}
+			}
+
+			// Add the component id to the ordered list
+			cm.order = append(cm.order, comp.ComponentId())
 		}
-	} else {
-		hasDescriptor = false
-		cm.l.Printf("No descriptor in component: %s\n", main.ComponentId())
+	}
+
+	return fModel, nil
+}
+
+func (cm componentManager) findComponents(comp Component, tplC TemplateContext) (Model, []Component, error) {
+	var fModel Model
+	var comps []Component
+
+	// Fetch component
+	fComp, err := cm.fetchComponent(comp)
+	if err != nil {
+		cm.l.Printf("error fetching the main descriptor %s", err.Error())
+		return nil, nil, err
+	}
+
+	// Parse references
+	parent, otherComps, err := comp.ParseComponents(fComp.rootPath, tplC)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	// Go through parents recursively
 	if parent != nil {
-		fM, err = cm.Init(parent, tplC)
+		var pComps []Component
+		fModel, pComps, err = cm.findComponents(parent, tplC)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
+		comps = append(comps, pComps...)
 	}
 
-	// Parse the component model if any and merge it
-	if hasDescriptor {
-		cM, err := main.ParseModel(descPath, tplC)
-		if err != nil {
-			return nil, err
-		}
-		if fM != nil {
-			fM, err = fM.Merge(cM)
+	// Add the discovered components to the list
+	comps = append(comps, otherComps...)
+	comps = append(comps, comp)
+
+	// Parse the component model
+	cModel, err := comp.ParseModel(fComp.rootPath, tplC)
+	if err != nil {
+		return nil, nil, err
+	}
+	if cModel != nil {
+		if fModel != nil {
+			fModel, err = fModel.Merge(cModel)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		} else {
-			fM = cM
+			fModel = cModel
 		}
 	}
 
-	// Go through declared components
-	for _, ref := range refs {
-		c, err := ref.Component(fM)
-		if err != nil {
-			return nil, err
-		}
-		cM, err := cm.Init(c, tplC)
-		if err != nil {
-			return nil, err
-		}
-		if cM != nil {
-			if fM != nil {
-				fM, err = fM.Merge(cM)
-				if err != nil {
-					return nil, err
-				}
-			} else {
-				fM = cM
-			}
-		}
-	}
-
-	return fM, nil
+	return fModel, comps, nil
 }
 
 func (cm componentManager) ContainsFile(name string, tplC TemplateContext, in ...ComponentRef) MatchingPaths {
@@ -149,6 +175,10 @@ func (cm componentManager) ContainsDirectory(name string, tplC TemplateContext, 
 func (cm componentManager) IsAvailable(cr ComponentRef) bool {
 	_, ok := cm.fComps[cr.ComponentId()]
 	return ok
+}
+
+func (cm componentManager) ComponentOrder() []string {
+	return cm.order
 }
 
 func (cm componentManager) Use(cr ComponentRef, tplC TemplateContext) (UsableComponent, error) {
@@ -216,26 +246,16 @@ func (cm componentManager) contains(isFolder bool, name string, tplC TemplateCon
 	return res
 }
 
-//HasDescriptor returns true if the fetched component contains a descriptor
-func (fc fetchedComponent) hasDescriptor() bool {
-	if fc.component.Descriptor() == "" {
-		return false
-	}
-	if _, err := os.Stat(filepath.Join(fc.rootPath, fc.component.Descriptor())); err == nil {
-		return true
-	}
-	return false
-}
-
 func (cm *componentManager) isComponentFetched(id string) (val fetchedComponent, present bool) {
 	val, present = cm.fComps[id]
 	return
 }
 
 func (cm *componentManager) fetchComponent(c Component) (fetchedComponent, error) {
-	cm.l.Printf("Fetching component %s", c.ComponentId())
 	fComp, isFetched := cm.isComponentFetched(c.ComponentId())
 	if !isFetched {
+		cm.l.Printf("Fetching component %s", c.ComponentId())
+
 		// Resolve fetch handler
 		h, err := GetScmHandler(cm.l, cm.directory, c)
 		if err != nil {

@@ -232,40 +232,68 @@ func (r *testRepo) Tag(tag string) {
 }
 
 func (r *testRepo) AsRepository(ref string) Repository {
-	abs, err := filepath.Abs(r.path)
-	if err != nil {
-		panic(err) // will not be able to execute test at this point
-	}
-	u, err := url.Parse("file://localhost" + abs)
-	if err != nil {
-		panic(err) // will not be able to execute test at this point
-	}
-	return Repository{
-		Loc: u,
-		Ref: ref,
-	}
+	return CreateTestRepository(r.path, ref)
 }
 
 //ComponentCount returns the number of components available
 func (t *ComponentTester) ComponentCount() int {
-	files, _ := ioutil.ReadDir(t.compDir)
-	res := 0
-	for _, f := range files {
-		if f.IsDir() {
-			res++
+	return len(t.cM.(*componentManager).fComps)
+}
+
+func (t *ComponentTester) AssertComponentsExactly(refs ...string) {
+	var missing []string
+	var present []string
+	availableComps := t.cM.(*componentManager).fComps
+	for name := range availableComps {
+		if !arrayContains(refs, name) {
+			present = append(present, name)
 		}
 	}
-	return res
+	for _, ref := range refs {
+		if !mapContainsKey(availableComps, ref) {
+			missing = append(missing, ref)
+		}
+	}
+	assert.Empty(t.t, missing, "Missing components that should be present: "+strings.Join(missing, ", "))
+	assert.Empty(t.t, present, "Present components that should be missing: "+strings.Join(present, ", "))
+}
+
+func arrayContains(haystack []string, needle string) bool {
+	for _, s := range haystack {
+		if s == needle {
+			return true
+		}
+	}
+	return false
+}
+
+func mapContainsKey(haystack map[string]fetchedComponent, needle string) bool {
+	for k, _ := range haystack {
+		if k == needle {
+			return true
+		}
+	}
+	return false
 }
 
 func (t *ComponentTester) AssertComponentAvailable(refs ...string) {
-	missing := []string{}
+	var missing []string
 	for _, ref := range refs {
 		if !t.cM.IsAvailable(testComponentRef(ref)) {
 			missing = append(missing, ref)
 		}
 	}
-	assert.Empty(t.t, missing, "Missing components: "+strings.Join(missing, ", "))
+	assert.Empty(t.t, missing, "Missing components that should be present: "+strings.Join(missing, ", "))
+}
+
+func (t *ComponentTester) AssertComponentMissing(refs ...string) {
+	var present []string
+	for _, ref := range refs {
+		if t.cM.IsAvailable(testComponentRef(ref)) {
+			present = append(present, ref)
+		}
+	}
+	assert.Empty(t.t, present, "Present components that should be missing: "+strings.Join(present, ", "))
 }
 
 //AssertFile asserts that a usable component contains a specific file
@@ -303,10 +331,21 @@ func (t testComponentRef) ComponentId() string {
 	return string(t)
 }
 
-func (t testComponentRef) HasComponent() bool {
-	return t != ""
-}
-
 func (t testComponentRef) Component(model interface{}) (Component, error) {
 	return nil, errors.New("test references are not resolvable")
+}
+
+func CreateTestRepository(path, ref string) Repository {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		panic(err) // will not be able to execute test at this point
+	}
+	u, err := url.Parse("file://localhost" + abs)
+	if err != nil {
+		panic(err) // will not be able to execute test at this point
+	}
+	return Repository{
+		Loc: u,
+		Ref: ref,
+	}
 }
