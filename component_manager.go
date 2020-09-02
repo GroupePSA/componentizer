@@ -111,6 +111,15 @@ func (cm *componentManager) Init(main Component, tplC TemplateContext) (Model, e
 		}
 	}
 
+	// Update fetched components with refreshed components from the model
+	for fId, fComp := range cm.fComps {
+		fComp.component, err = fComp.component.Component(fModel)
+		if err != nil {
+			return nil, err
+		}
+		cm.fComps[fId] = fComp
+	}
+
 	return fModel, nil
 }
 
