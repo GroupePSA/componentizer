@@ -196,7 +196,7 @@ func (cm componentManager) Use(cr ComponentRef, tplC TemplateContext) (UsableCom
 	if !ok {
 		return nil, fmt.Errorf("component %s is not available", cr.ComponentId())
 	}
-	if ok, patterns := fetchedC.component.Templated(); ok {
+	if ok, patterns := fetchedC.component.GetTemplates(); ok {
 		templatedPath, err := executeTemplate(fetchedC.rootPath, patterns, tplC.Clone(cr))
 		if err != nil {
 			return usable{}, err
@@ -209,12 +209,14 @@ func (cm componentManager) Use(cr ComponentRef, tplC TemplateContext) (UsableCom
 				path:      templatedPath,
 				release:   cm.cleanup(templatedPath),
 				templated: true,
+				source:    cr,
 			}
 		} else {
 			res = usable{
 				id:        cr.ComponentId(),
 				path:      fetchedC.rootPath,
 				templated: false,
+				source:    cr,
 			}
 		}
 	} else {
@@ -222,15 +224,9 @@ func (cm componentManager) Use(cr ComponentRef, tplC TemplateContext) (UsableCom
 			id:        cr.ComponentId(),
 			path:      fetchedC.rootPath,
 			templated: false,
+			source:    cr,
 		}
 	}
-
-	// Keep component env vars TODO fix this
-	//if o, ok := cr.(EnvVarsAware); ok {
-	//	res.envVars = o.EnvVars()
-	//} else {
-	//	res.envVars = model.EnvVars{}
-	//}
 
 	return res, nil
 }

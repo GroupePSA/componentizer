@@ -1,6 +1,7 @@
 package componentizer
 
 import (
+	"fmt"
 	"net/url"
 	"strings"
 )
@@ -77,4 +78,8 @@ func (r *Repository) Merge(with Repository) {
 	for k := range with.Authentication {
 		r.Authentication[k] = with.Authentication[k]
 	}
+}
+
+func (r Repository) String() string {
+	return fmt.Sprintf("%s@%s", r.Loc.String(), r.Ref)
 }

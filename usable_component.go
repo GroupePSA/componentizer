@@ -20,6 +20,8 @@ type (
 		ContainsFile(name string) (bool, MatchingPath)
 		//ContainsDirectory returns the matching path of the searched directory
 		ContainsDirectory(name string) (bool, MatchingPath)
+		//Source returns the component that was used to produce this UsableComponent
+		Source() ComponentRef
 	}
 
 	usable struct {
@@ -27,6 +29,7 @@ type (
 		release   func()
 		path      string
 		templated bool
+		source    ComponentRef
 	}
 )
 
@@ -54,6 +57,10 @@ func (u usable) ContainsFile(path string) (bool, MatchingPath) {
 
 func (u usable) ContainsDirectory(path string) (bool, MatchingPath) {
 	return u.contains(true, path)
+}
+
+func (u usable) Source() ComponentRef {
+	return u.source
 }
 
 func (u usable) contains(isFolder bool, path string) (bool, MatchingPath) {

@@ -31,7 +31,7 @@ type Handler func() (fetchedComponent, error)
 
 //GetHandler returns an handler able to fetch a component
 func GetScmHandler(l *log.Logger, dir string, c Component) (Handler, error) {
-	loc := c.Repository().Loc
+	loc := c.GetRepository().Loc
 	switch loc.Scheme {
 	case SchemeFile:
 		return fetchThroughSCM(c, FileScmHandler{Logger: l}, loc, dir), nil
@@ -51,7 +51,7 @@ func fetchThroughSCM(c Component, scm scmHandler, u *url.URL, dir string) func()
 		fc.rootPath = cPath
 		if _, err := os.Stat(cPath); err == nil {
 			if scm.Matches(u, cPath) {
-				err := scm.Update(cPath, c.Repository().Authentication)
+				err := scm.Update(cPath, c.GetRepository().Authentication)
 				if err != nil {
 					return fc, err
 				}
@@ -60,18 +60,18 @@ func fetchThroughSCM(c Component, scm scmHandler, u *url.URL, dir string) func()
 				if err != nil {
 					return fc, err
 				}
-				err = scm.Fetch(u, cPath, c.Repository().Authentication)
+				err = scm.Fetch(u, cPath, c.GetRepository().Authentication)
 				if err != nil {
 					return fc, err
 				}
 			}
 		} else {
-			err := scm.Fetch(u, cPath, c.Repository().Authentication)
+			err := scm.Fetch(u, cPath, c.GetRepository().Authentication)
 			if err != nil {
 				return fc, err
 			}
 		}
-		err := scm.Switch(cPath, c.Repository().Ref)
+		err := scm.Switch(cPath, c.GetRepository().Ref)
 		if err != nil {
 			return fc, err
 		}

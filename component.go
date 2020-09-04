@@ -8,8 +8,8 @@ type (
 
 	Component interface {
 		ComponentRef
-		Repository() Repository
-		Templated() (bool, []string)
+		GetRepository() Repository
+		GetTemplates() (bool, []string)
 		ParseModel(path string, tplC TemplateContext) (Model, error)
 		ParseComponents(path string, tplC TemplateContext) (Component, []Component, error)
 	}
