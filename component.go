@@ -14,6 +14,11 @@ type (
 		ParseComponents(path string, tplC TemplateContext) (Component, []Component, error)
 	}
 
+	TemplateContext interface {
+		Clone(ref ComponentRef) TemplateContext
+		Execute(content string) (string, error)
+	}
+
 	// ComponentRef allows to access to a component through its reference
 	ComponentRef interface {
 		// ComponentId returns the referenced component id
