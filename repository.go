@@ -81,5 +81,9 @@ func (r *Repository) Merge(with Repository) {
 }
 
 func (r Repository) String() string {
-	return fmt.Sprintf("%s@%s", r.Loc.String(), r.Ref)
+	if r.Loc != nil {
+		return fmt.Sprintf("%s@%s", r.Loc.String(), r.Ref)
+	} else {
+		return ""
+	}
 }
