@@ -75,6 +75,9 @@ func (r *Repository) Merge(with Repository) {
 	if with.Ref != "" {
 		r.Ref = with.Ref
 	}
+	if r.Authentication == nil {
+		r.Authentication = make(map[string]string)
+	}
 	for k := range with.Authentication {
 		r.Authentication[k] = with.Authentication[k]
 	}
