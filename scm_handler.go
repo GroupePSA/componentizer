@@ -34,7 +34,8 @@ func GetScmHandler(l *log.Logger, dir string, c Component) (Handler, error) {
 	loc := c.GetRepository().Loc
 	switch loc.Scheme {
 	case SchemeFile:
-		return fetchThroughSCM(c, FileScmHandler{Logger: l}, loc, dir), nil
+		// Assume local file is still a git repository for now
+		return fetchThroughSCM(c, GitScmHandler{Logger: l}, loc, dir), nil
 	case SchemeGits, SchemeHttp, SchemeHttps:
 		return fetchThroughSCM(c, GitScmHandler{Logger: l}, loc, dir), nil
 	default:
